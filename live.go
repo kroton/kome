@@ -10,13 +10,16 @@ import (
 )
 
 const (
-	recv_buf      = 2048
-	kome_chan_buf = 256
+	recv_buf_size      = 2048
+	kome_chan_buf_size = 256
+
+	// Format
+	getPlayerStatusAPI = "http://watch.live.nicovideo.jp/api/getplayerstatus?v=%s"
+	firstThreadFormat  = `<thread thread="%d" version="20061206" res_from="-1000"/>`
 )
 
 var (
-	getPlayerStatusAPIURL = "http://watch.live.nicovideo.jp/api/getplayerstatus?v=%s"
-	errPlayerStatusFail   = errors.New("playerstatus should be ok")
+	errPlayerStatusFail = errors.New("playerstatus should be ok")
 
 	threadSt = []byte("<thread")
 	threadEd = append([]byte("/>"), 0)
@@ -60,7 +63,13 @@ type Kome struct {
 	Comment  string `xml:",innerxml"`
 }
 
-type Live struct {
+type NicoLive struct {
+	quitCh chan struct{}
+	KomeCh chan Kome
+
+	buf []byte
+	acc []byte
+
 	client http.Client
 	socket *net.TCPConn
 
@@ -69,17 +78,21 @@ type Live struct {
 	Thread KomeThread
 }
 
-func NewLive(client http.Client, liveID string) *Live {
-	return &Live {
+func NewNicoLive(client http.Client, liveID string) *NicoLive {
+	return &NicoLive {
+		quitCh: make(chan struct{}),
+		KomeCh: make(chan Kome, kome_chan_buf_size),
+		buf:    make([]byte, recv_buf_size),
+		acc:    make([]byte, 0, recv_buf_size),
 		client: client,
 		LiveID: liveID,
 	}
 }
 
-func (lv *Live) getPlayerStatus() error {
-	APIURL := fmt.Sprintf(getPlayerStatusAPIURL, lv.LiveID)
+func (lv *NicoLive) GetPlayerStatus() error {
+	u := fmt.Sprintf(getPlayerStatusAPI, lv.LiveID)
 
-	res, err := lv.client.Get(APIURL)
+	res, err := lv.client.Get(u)
 	if err != nil {
 		return err
 	}
@@ -91,105 +104,91 @@ func (lv *Live) getPlayerStatus() error {
 	if lv.Status.Status != "ok" {
 		return errPlayerStatusFail
 	}
+
 	return nil
 }
 
-func (lv *Live) Connect() (<-chan Kome, error) {
+func (lv *NicoLive) Connect() error {
 	addr := fmt.Sprintf("%s:%d", lv.Status.Ms.Addr, lv.Status.Ms.Port)
 
 	tcp_addr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
-		return nil, err
-	}
-	if lv.socket, err = net.DialTCP("tcp", nil, tcp_addr); err != nil {
-		return nil, err
+		return err
 	}
 
-	data := fmt.Sprintf(`<thread thread="%d" version="20061206" res_from="-1000"/>`, lv.Status.Ms.Thread)
-	b := []byte(data)
+	lv.socket, err = net.DialTCP("tcp", nil, tcp_addr)
+	if err != nil {
+		return err
+	}
 
-	// send thread data
-	lv.socket.Write(append(b, 0))
-
-	var acc []byte
-	buf := make([]byte, recv_buf)
+	d := fmt.Sprintf(firstThreadFormat, lv.Status.Ms.Thread)
+	b := append([]byte(d), 0)
+	lv.socket.Write(b)
 
 	for {
-		n, err := lv.socket.Read(buf)
+		n, err := lv.socket.Read(lv.buf)
 		if err != nil {
 			lv.socket.Close()
-			return nil, err
+			return err
 		}
 
-		acc = append(acc, buf[0:n]...)
-
-		if bytes.HasPrefix(acc, threadSt) {
-			p := bytes.Index(acc, threadEd)
+		lv.acc = append(lv.acc, lv.buf[0:n]...)
+		if bytes.HasPrefix(lv.acc, threadSt) {
+			p := bytes.Index(lv.acc, threadEd)
 			if p < 0 {
 				continue
 			}
 
 			end := p + len(threadEd)
-			if err := xml.Unmarshal(acc[0:end], &lv.Thread); err != nil {
+			if err := xml.Unmarshal(lv.acc[0:end], &lv.Thread); err != nil {
 				lv.socket.Close()
-				return nil, err
+				return err
 			}
 
-			acc = acc[end:]
+			lv.acc = lv.acc[end:]
 			break
 		}
 	}
 
-	ch := make(chan Kome, kome_chan_buf)
-	go lv.loop(buf, acc, ch)
-
-	return ch, nil
+	go lv.process()
+	return nil
 }
 
-func (lv *Live) loop(buf, acc []byte, ch chan<- Kome) {
-	defer lv.socket.Close()
+func (lv *NicoLive) process() {
+	defer func(){
+		lv.socket.Close()
+		close(lv.KomeCh)
+		close(lv.quitCh)
+	}()
 
 	for {
-		n, err := lv.socket.Read(buf)
+		n, err := lv.socket.Read(lv.buf)
 		if err != nil {
 			return
 		}
 
-		acc = append(acc, buf[0:n]...)
+		lv.acc = append(lv.acc, lv.buf[0:n]...)
 		for {
-			p := bytes.Index(acc, chatEd)
+			p := bytes.Index(lv.acc, chatEd)
 			if p < 0 {
 				break
 			}
 
 			end := p + len(chatEd)
-			mid := acc[0:end]
-
-			acc = acc[end:]
+			cut := lv.acc[0:end]
+			lv.acc = lv.acc[end:]
 
 			var kome Kome
-			if err := xml.Unmarshal(mid, &kome); err != nil {
+			if err := xml.Unmarshal(cut, &kome); err != nil {
 				continue
 			}
 
-			next := func() (res bool) {
-				defer func(){
-					if err := recover(); err != nil {
-						res = false
-					}
-				}()
-
-				res = true
-				ch <- kome
-				return
-			}()
-			if !next {
-				return
-			}
+			lv.KomeCh <- kome
 		}
 	}
 }
 
-func (lv *Live) Close() {
+func (lv *NicoLive) Close() {
 	lv.socket.Close()
+	<-lv.quitCh
 }
