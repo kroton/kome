@@ -202,11 +202,11 @@ func (v *View) UpdateView() {
 			noStr := fmt.Sprintf("%d", last.No)
 			return fmt.Sprintf("%%0%dd", len(noStr))
 		}()
-		maxUserIDLen := func() int {
+		maxUserNameLen := func() int {
 			maxLen := 0
 			for _, kome := range v.komes[v.top:end] {
-				l := len(kome.UserID)
-				if kome.Is184Comment() {
+				l := stringWidth(kome.User.Name)
+				if !kome.IsRawUser {
 					l = 3
 				}
 				if l > maxLen {
@@ -262,23 +262,27 @@ func (v *View) UpdateView() {
 			x++
 
 			{
-				// userID
+				// userName
 				fg := termbox.ColorGreen
-				userID := v.komes[i].UserID
+				userName := v.komes[i].User.Name
 
-				if v.komes[i].Is184Comment() {
+				if !v.komes[i].IsRawUser {
 					fg = termbox.ColorYellow
-					userID = "184"
+					userName = "184"
 				}
 				if i == v.ptr {
 					fg = termbox.ColorDefault
 				}
 
-				for len(userID) < maxUserIDLen {
-					userID += " "
-				}
-				for _, c := range userID {
+				l := 0
+				for _, c := range userName {
 					termbox.SetCell(x, y, c, fg, bg)
+					w := runewidth.RuneWidth(c)
+					x += w
+					l += w
+				}
+				for ;l < maxUserNameLen; l++ {
+					termbox.SetCell(x, y, ' ', fg, bg)
 					x++
 				}
 			}
@@ -366,6 +370,14 @@ func (v *View) UpdateView() {
 	}
 
 	termbox.Flush()
+}
+
+func stringWidth(s string) int {
+	w := 0
+	for _, c := range s {
+		w += width(c)
+	}
+	return w
 }
 
 func width(c rune) int {

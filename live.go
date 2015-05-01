@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"io/ioutil"
 	"html"
+	"strconv"
 )
 
 var (
@@ -58,23 +59,19 @@ type KomeThread struct {
 }
 
 type Kome struct {
-	XMLName  xml.Name `xml:"chat"`
-	Thread   int64    `xml:"thread,attr"`
-	No       int      `xml:"no,attr"`
-	Vpos     int64    `xml:"vpos,attr"`
-	Date     int64    `xml:"date,attr"`
-	UserID   string   `xml:"user_id,attr"`
-	Premium  int      `xml:"premium,attr"`
-	Mail     string   `xml:"mail,attr"`
-	Ticket   string   `xml:"ticket,attr"`
-	PostKey  string   `xml:"postkey,attr"`
-	Comment  string   `xml:",innerxml"`
-}
-func (k Kome) IsRawComment() bool {
-	return rawUserIDReg.MatchString(k.UserID)
-}
-func (k Kome) Is184Comment() bool {
-	return !k.IsRawComment()
+	XMLName   xml.Name `xml:"chat"`
+	Thread    int64    `xml:"thread,attr"`
+	No        int      `xml:"no,attr"`
+	Vpos      int64    `xml:"vpos,attr"`
+	Date      int64    `xml:"date,attr"`
+	UserID    string   `xml:"user_id,attr"`
+	Premium   int      `xml:"premium,attr"`
+	Mail      string   `xml:"mail,attr"`
+	Ticket    string   `xml:"ticket,attr"`
+	PostKey   string   `xml:"postkey,attr"`
+	Comment   string   `xml:",innerxml"`
+	IsRawUser bool     `xml:"-"`
+	User      User     `xml:"-"`
 }
 
 type KomeResult struct {
@@ -84,6 +81,7 @@ type KomeResult struct {
 
 type NicoLive struct {
 	client http.Client
+	repo   *UserRepo
 
 	LiveID string
 	Status PlayerStatus
@@ -101,9 +99,10 @@ type NicoLive struct {
 	lastNo int
 }
 
-func NewNicoLive(client http.Client, liveID string) *NicoLive {
+func NewNicoLive(client http.Client, repo *UserRepo, liveID string) *NicoLive {
 	return &NicoLive{
 		client: client,
+		repo:   repo,
 		LiveID: liveID,
 		buf:    make([]byte, 2048),
 		acc:    make([]byte, 0, 2048),
@@ -235,6 +234,18 @@ func (lv *NicoLive) process() {
 					continue
 				}
 
+				kome.IsRawUser = rawUserIDReg.MatchString(kome.UserID)
+				if kome.IsRawUser {
+					id, err := strconv.ParseInt(kome.UserID, 10, 64)
+					if err == nil {
+						kome.User, err = lv.getUser(id)
+					}
+					if err != nil {
+						kome.User.ID = id
+						kome.User.Name = kome.UserID
+					}
+				}
+
 				lv.mu.Lock()
 				lv.lastNo = kome.No
 				lv.mu.Unlock()
@@ -339,4 +350,31 @@ func (lv *NicoLive) SendKome(comment string, is184 bool) error {
 		return err
 	}
 	return nil
+}
+
+func (lv *NicoLive) getUser(id int64) (User, error) {
+	if user, err := lv.repo.Get(id); err == nil {
+		return user, nil
+	}
+
+	u := fmt.Sprintf("http://seiga.nicovideo.jp/api/user/info?id=%d", id)
+	res, err := lv.client.Get(u)
+	if err != nil {
+		return User{}, err
+	}
+	defer res.Body.Close()
+
+	var resXML struct {
+		XMLName xml.Name `xml:"response"`
+		User    User     `xml:"user"`
+	}
+	if err := xml.NewDecoder(res.Body).Decode(&resXML); err != nil {
+		return User{}, err
+	}
+	if resXML.User.ID != id || resXML.User.Name == "-" {
+		return User{}, errors.New("failed to getting user info")
+	}
+
+	lv.repo.Save(resXML.User)
+	return resXML.User, nil
 }

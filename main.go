@@ -8,6 +8,7 @@ import (
 	"time"
 	"github.com/nsf/termbox-go"
 	"runtime"
+
 )
 
 const usage = "Usage: kome \x1b[4mURL or lv***\x1b[0m\n"
@@ -34,7 +35,6 @@ func main(){
 		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
 		return
 	}
-
 	if !ctx.HeartBeat() {
 		if !ctx.Login() || !ctx.HeartBeat() {
 			fmt.Fprintf(os.Stderr, "kome: failed to login\n")
@@ -46,7 +46,15 @@ func main(){
 		}
 	}
 
-	lv := NewNicoLive(ctx.NewClient(), liveID)
+
+	repo, err := NewUserRepo(u.HomeDir + "/.config/kome/user.sqlite")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
+		return
+	}
+
+
+	lv := NewNicoLive(ctx.NewClient(), repo, liveID)
 	if err := lv.GetPlayerStatus(); err != nil {
 		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
 		return
@@ -56,6 +64,7 @@ func main(){
 		return
 	}
 	defer lv.Close()
+
 
 	if err := termbox.Init(); err != nil {
 		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
@@ -69,6 +78,7 @@ func main(){
 			evCh <- termbox.PollEvent()
 		}
 	}()
+
 
 	view := NewView(lv)
 	tick := time.Tick(time.Second / 2)
