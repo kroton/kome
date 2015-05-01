@@ -7,11 +7,14 @@ import (
 	"regexp"
 	"time"
 	"github.com/nsf/termbox-go"
+	"runtime"
 )
 
 const usage = "Usage: kome \x1b[4mURL or lv***\x1b[0m\n"
 
 func main(){
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	if len(os.Args) != 2 {
 		fmt.Fprintf(os.Stdout, usage)
 		return
@@ -60,6 +63,7 @@ func main(){
 	}
 	defer termbox.Close()
 
+
 	evCh := make(chan termbox.Event)
 	go func(){
 		for {
@@ -84,6 +88,7 @@ func main(){
 		if view.Quit {
 			break
 		}
+
 		view.UpdateView()
 	}
 }

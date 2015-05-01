@@ -10,6 +10,7 @@ type View struct {
 	Quit   bool
 	width  int
 	height int
+	top    int
 	ptr    int
 	live   *NicoLive
 	komes  []Kome
@@ -21,6 +22,7 @@ func NewView(live *NicoLive) *View {
 	return &View {
 		width:  w,
 		height: h,
+		top:    0,
 		ptr:    0,
 		live:   live,
 	}
@@ -30,6 +32,7 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 	switch ev.Type {
 	case termbox.EventResize:
 		v.width, v.height = ev.Width, ev.Height
+		v.fixPtr()
 	case termbox.EventKey:
 		if len(v.cmd) != 0 {
 			// cmd now
@@ -59,8 +62,17 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 			v.fixPtr()
 		case 'G':
 			v.ptr = len(v.komes) - 1
+			v.fixPtr()
 		}
 	}
+}
+
+func (v *View) calcEnd() int {
+	end := v.top + (v.height - 2)
+	if end > len(v.komes) {
+		end = len(v.komes)
+	}
+	return end
 }
 
 func (v *View) fixPtr() {
@@ -69,6 +81,17 @@ func (v *View) fixPtr() {
 	}
 	if v.ptr >= len(v.komes) {
 		v.ptr = len(v.komes) - 1
+	}
+
+	if v.ptr < v.top {
+		v.top = v.ptr
+		return
+	}
+
+	end := v.calcEnd()
+	if v.ptr >= end {
+		v.top += v.ptr - end + 1
+		return
 	}
 }
 
@@ -96,6 +119,16 @@ func (v *View) execCommand() {
 }
 
 func (v *View) UpdateKome(kome Kome) {
+	end := v.calcEnd()
+	if end == len(v.komes) {
+		if end - v.top + 1 > v.height - 2 {
+			v.top++
+			if v.ptr < v.top {
+				v.ptr = v.top
+			}
+		}
+	}
+
 	v.komes = append(v.komes, kome)
 }
 
@@ -105,19 +138,16 @@ func (v *View) UpdateView() {
 
 	// line view
 	if len(v.komes) > 0 && v.height > 2 {
-		s := len(v.komes) - (v.height - 2)
-		if s < 0 {
-			s = 0
-		}
+		end := v.calcEnd()
 
 		noPadFormat := func() string {
-			last := v.komes[len(v.komes) - 1]
+			last := v.komes[end - 1]
 			noStr := fmt.Sprintf("%d", last.No)
 			return fmt.Sprintf("%%0%dd", len(noStr))
 		}()
 		maxUserIDLen := func() int {
 			maxLen := 0
-			for _, kome := range v.komes[s:] {
+			for _, kome := range v.komes[v.top:end] {
 				l := len(kome.UserID)
 				if kome.Is184Comment() {
 					l = 3
@@ -130,7 +160,7 @@ func (v *View) UpdateView() {
 		}()
 
 		y := 0
-		for i := s; i < len(v.komes); i++ {
+		for i := v.top; i < end; i++ {
 			bg := termbox.ColorDefault
 			if i == v.ptr {
 				bg = termbox.ColorGreen
@@ -205,7 +235,7 @@ func (v *View) UpdateView() {
 
 		par := 0
 		if len(v.komes) > 0 {
-			par = (v.ptr + 1) * 100 / len(v.komes)
+			par = v.calcEnd() * 100 / len(v.komes)
 		}
 		right := fmt.Sprintf("%d%%", par)
 
