@@ -2,18 +2,17 @@ package main
 
 import (
 	"fmt"
-	"os/user"
-	"os"
-	"regexp"
-	"time"
 	"github.com/nsf/termbox-go"
+	"os"
+	"os/user"
+	"regexp"
 	"runtime"
-
+	"time"
 )
 
 const usage = "Usage: kome \x1b[4mURL or lv***\x1b[0m\n"
 
-func main(){
+func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	if len(os.Args) != 2 {
@@ -46,13 +45,11 @@ func main(){
 		}
 	}
 
-
 	repo, err := NewUserRepo(u.HomeDir + "/.config/kome/user.sqlite")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
 		return
 	}
-
 
 	lv := NewNicoLive(ctx.NewClient(), repo, liveID)
 	if err := lv.GetPlayerStatus(); err != nil {
@@ -65,7 +62,6 @@ func main(){
 	}
 	defer lv.Close()
 
-
 	if err := termbox.Init(); err != nil {
 		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
 		return
@@ -73,17 +69,16 @@ func main(){
 	defer termbox.Close()
 
 	evCh := make(chan termbox.Event)
-	go func(){
+	go func() {
 		for {
 			evCh <- termbox.PollEvent()
 		}
 	}()
 
-
 	view := NewView(lv)
 	tick := time.Tick(time.Second / 2)
 
-	loop:
+loop:
 	for {
 		select {
 		case <-tick:

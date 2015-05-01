@@ -1,18 +1,18 @@
 package main
 
 import (
-	"net"
-	"net/http"
-	"fmt"
+	"bytes"
 	"encoding/xml"
 	"errors"
-	"bytes"
+	"fmt"
+	"html"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"regexp"
+	"strconv"
 	"sync"
 	"time"
-	"regexp"
-	"io/ioutil"
-	"html"
-	"strconv"
 )
 
 var (
@@ -22,7 +22,7 @@ var (
 	tagChatEnd      = append([]byte("</chat>"), 0)
 	tagChatResBegin = []byte("<chat_result ")
 	tagChatResEnd   = append([]byte("/>"), 0)
-	rawUserIDReg   = regexp.MustCompile(`^\d+$`)
+	rawUserIDReg    = regexp.MustCompile(`^\d+$`)
 )
 
 type PlayerStatus struct {
@@ -44,7 +44,7 @@ type PlayerStatus struct {
 		IsPremium int    `xml:"is_premium"`
 	} `xml:"user"`
 
-	Ms struct{
+	Ms struct {
 		Addr   string `xml:"addr"`
 		Port   int    `xml:"port"`
 		Thread int64  `xml:"thread"`
@@ -91,9 +91,9 @@ type NicoLive struct {
 	acc      []byte
 	thread   KomeThread
 	openTime int64
-	KomeCh chan Kome
-	sig    chan struct{}
-	quit   chan struct{}
+	KomeCh   chan Kome
+	sig      chan struct{}
+	quit     chan struct{}
 
 	mu     sync.Mutex
 	lastNo int
@@ -144,11 +144,11 @@ func (lv *NicoLive) write(b []byte) error {
 
 func (lv *NicoLive) Connect(timeout time.Duration) error {
 	addr := fmt.Sprintf("%s:%d", lv.Status.Ms.Addr, lv.Status.Ms.Port)
-	tcp_addr, err := net.ResolveTCPAddr("tcp", addr)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		return err
 	}
-	lv.socket, err = net.DialTCP("tcp", nil, tcp_addr)
+	lv.socket, err = net.DialTCP("tcp", nil, tcpAddr)
 	if err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func (lv *NicoLive) Connect(timeout time.Duration) error {
 }
 
 func (lv *NicoLive) process() {
-	defer func(){
+	defer func() {
 		lv.quit <- struct{}{}
 	}()
 
@@ -294,10 +294,10 @@ func (lv *NicoLive) Close() {
 
 func (lv *NicoLive) getPostKey() (string, error) {
 	lv.mu.Lock()
-	block_num := lv.lastNo / 10
+	blockNum := lv.lastNo / 10
 	lv.mu.Unlock()
 
-	u := fmt.Sprintf("http://live.nicovideo.jp/api/getpostkey?thread=%d&block_no=%d", lv.Status.Ms.Thread, block_num)
+	u := fmt.Sprintf("http://live.nicovideo.jp/api/getpostkey?thread=%d&block_no=%d", lv.Status.Ms.Thread, blockNum)
 	res, err := lv.client.Get(u)
 	if err != nil {
 		return "", err

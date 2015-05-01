@@ -1,4 +1,5 @@
 package main
+
 import (
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
@@ -26,7 +27,7 @@ func NewUserRepo(path string) (*UserRepo, error) {
 	if _, err := db.Exec(createUserTable); err != nil {
 		return nil, err
 	}
-	return &UserRepo{ db: db, mp: make(map[int64]User) }, nil
+	return &UserRepo{db: db, mp: make(map[int64]User)}, nil
 }
 
 func (r *UserRepo) Get(id int64) (User, error) {

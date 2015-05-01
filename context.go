@@ -1,14 +1,15 @@
 package main
+
 import (
+	"encoding/json"
+	"encoding/xml"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
-	"regexp"
 	"net/url"
-	"encoding/xml"
 	"os"
-	"fmt"
-	"encoding/json"
-	"io/ioutil"
+	"regexp"
 )
 
 var (
@@ -19,7 +20,7 @@ var (
 
 type NicoContext struct {
 	Mail     string `json:"mail"`
-	Password string	`json:"password"`
+	Password string `json:"password"`
 	Session  string `json:"session"`
 }
 
@@ -37,8 +38,8 @@ func LoadContext(fileName string) (*NicoContext, error) {
 	return c, nil
 }
 
-func (c *NicoContext) SaveTo(fileName string) error {
-	b, err := json.MarshalIndent(c, "", "	")
+func (nc *NicoContext) SaveTo(fileName string) error {
+	b, err := json.MarshalIndent(nc, "", "	")
 	if err != nil {
 		return err
 	}
@@ -52,7 +53,7 @@ func (nc *NicoContext) NewClient() http.Client {
 func (nc *NicoContext) client() http.Client {
 	client := clientWithCookie()
 	client.Jar.SetCookies(nicoGlobalURL, []*http.Cookie{
-		&http.Cookie {
+		&http.Cookie{
 			Domain: nicoGlobalURL.Host,
 			Path:   "/",
 			Name:   nicoCookieName,
@@ -72,7 +73,7 @@ func (nc *NicoContext) HeartBeat() bool {
 	defer res.Body.Close()
 
 	var h struct {
-		Err struct{
+		Err struct {
 			Code string `xml:"code"`
 		} `xml:"error"`
 	}
@@ -87,9 +88,9 @@ func (nc *NicoContext) Login() bool {
 	client := clientWithCookie()
 	_, err := client.PostForm(
 		"https://secure.nicovideo.jp/secure/login?site=nicolive",
-		url.Values {
-			"mail":     { nc.Mail },
-			"password": { nc.Password },
+		url.Values{
+			"mail":     {nc.Mail},
+			"password": {nc.Password},
 		},
 	)
 	if err != nil {
@@ -106,9 +107,8 @@ func (nc *NicoContext) Login() bool {
 	return false
 }
 
-
 func clientWithCookie() http.Client {
 	jar, _ := cookiejar.New(nil)
-	client := http.Client {Jar: jar}
+	client := http.Client{Jar: jar}
 	return client
 }

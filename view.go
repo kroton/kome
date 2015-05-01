@@ -1,12 +1,13 @@
 package main
+
 import (
-	"github.com/nsf/termbox-go"
-	"github.com/mattn/go-runewidth"
 	"fmt"
+	"github.com/mattn/go-runewidth"
+	"github.com/nsf/termbox-go"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
-	"sort"
 )
 
 const chainThreshold = 500 * 1000 * 1000
@@ -26,7 +27,7 @@ type View struct {
 
 func NewView(live *NicoLive) *View {
 	w, h := termbox.Size()
-	return &View {
+	return &View{
 		width:  w,
 		height: h,
 		top:    0,
@@ -46,8 +47,8 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 		case ev.Ch == 0:
 			v.chain = nil
 			v.prev = 0
-		case now - v.prev > chainThreshold:
-			v.chain = []rune{ ev.Ch }
+		case now-v.prev > chainThreshold:
+			v.chain = []rune{ev.Ch}
 			v.prev = now
 		default:
 			v.chain = append(v.chain, ev.Ch)
@@ -63,7 +64,7 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 				v.execCommand()
 			case termbox.KeyBackspace, termbox.KeyBackspace2:
 				if len(v.cmd) > 1 || v.cmd[0] != 'i' {
-					v.cmd = v.cmd[0:len(v.cmd)-1]
+					v.cmd = v.cmd[0 : len(v.cmd)-1]
 				}
 			case termbox.KeySpace:
 				v.cmd = append(v.cmd, ' ')
@@ -86,7 +87,7 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 			v.fixPtr()
 		case 'G':
 			c := string(v.chain)
-			if len(c) > 1 && c[len(c) - 1] == 'G' {
+			if len(c) > 1 && c[len(c)-1] == 'G' {
 				n, err := strconv.ParseInt(c[0:len(c)-1], 10, 32)
 				if err == nil {
 					v.jumpTo(int(n))
@@ -134,7 +135,7 @@ func (v *View) fixPtr() {
 }
 
 func (v *View) jumpTo(n int) {
-	i := sort.Search(len(v.komes), func(i int) bool{ return v.komes[i].No >= n })
+	i := sort.Search(len(v.komes), func(i int) bool { return v.komes[i].No >= n })
 	if i < len(v.komes) && v.komes[i].No == n {
 		v.ptr = i
 		v.fixPtr()
@@ -142,7 +143,7 @@ func (v *View) jumpTo(n int) {
 }
 
 func (v *View) execCommand() {
-	defer func(){
+	defer func() {
 		v.cmd = nil
 	}()
 
@@ -178,7 +179,7 @@ func (v *View) execCommand() {
 func (v *View) UpdateKome(kome Kome) {
 	end := v.calcEnd()
 	if end == len(v.komes) {
-		if end - v.top + 1 > v.height - 2 {
+		if end-v.top+1 > v.height-2 {
 			v.top++
 			if v.ptr < v.top {
 				v.ptr = v.top
@@ -198,7 +199,7 @@ func (v *View) UpdateView() {
 		end := v.calcEnd()
 
 		noPadFormat := func() string {
-			last := v.komes[end - 1]
+			last := v.komes[end-1]
 			noStr := fmt.Sprintf("%d", last.No)
 			return fmt.Sprintf("%%0%dd", len(noStr))
 		}()
@@ -251,7 +252,7 @@ func (v *View) UpdateView() {
 				st := time.Unix(v.live.Status.Stream.StartTime, 0)
 				tm := time.Unix(v.komes[i].Date, 0)
 				dif := tm.Sub(st)
-				line := fmt.Sprintf("%02d:%02d", int(dif.Minutes()), int(dif.Seconds()) % 60)
+				line := fmt.Sprintf("%02d:%02d", int(dif.Minutes()), int(dif.Seconds())%60)
 				for _, c := range line {
 					termbox.SetCell(x, y, c, fg, bg)
 					x++
@@ -281,7 +282,7 @@ func (v *View) UpdateView() {
 					x += w
 					l += w
 				}
-				for ;l < maxUserNameLen; l++ {
+				for ; l < maxUserNameLen; l++ {
 					termbox.SetCell(x, y, ' ', fg, bg)
 					x++
 				}
@@ -294,16 +295,16 @@ func (v *View) UpdateView() {
 				termbox.SetCell(x, y, c, termbox.ColorDefault, bg)
 				x += width(c)
 			}
-			for ;x < v.width; x++ {
+			for ; x < v.width; x++ {
 				termbox.SetCell(x, y, ' ', termbox.ColorDefault, bg)
 			}
 
 			if i == v.ptr && !nowCmd {
-				termbox.SetCursor(v.width - 1, y)
+				termbox.SetCursor(v.width-1, y)
 			}
 			y++
 		}
-		for ; y < v.height - 2; y++ {
+		for ; y < v.height-2; y++ {
 			for x := 0; x < v.width; x++ {
 				termbox.SetCell(x, y, ' ', termbox.ColorDefault, termbox.ColorDefault)
 			}
@@ -322,7 +323,7 @@ func (v *View) UpdateView() {
 		end := time.Unix(v.live.Status.Stream.EndTime, 0)
 		dif := end.Sub(time.Now())
 
-		right := fmt.Sprintf("%02d:%02d | %d%%", int(dif.Minutes()), int(dif.Seconds()) % 60, par)
+		right := fmt.Sprintf("%02d:%02d | %d%%", int(dif.Minutes()), int(dif.Seconds())%60, par)
 
 		y := v.height - 2
 		x := 0
