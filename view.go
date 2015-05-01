@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"strconv"
+	"sort"
 )
 
 const chainThreshold = 500 * 1000 * 1000
@@ -84,16 +85,16 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 			v.ptr--
 			v.fixPtr()
 		case 'G':
-			v.ptr = len(v.komes) - 1
-
 			c := string(v.chain)
 			if len(c) > 1 && c[len(c) - 1] == 'G' {
 				n, err := strconv.ParseInt(c[0:len(c)-1], 10, 32)
-				if err == nil && 1 <= n && n <= int64(len(v.komes)) {
-					v.ptr = int(n - 1)
+				if err == nil {
+					v.jumpTo(int(n))
+					break
 				}
 			}
 
+			v.ptr = len(v.komes) - 1
 			v.fixPtr()
 		case 'g':
 			if string(v.chain) == "gg" {
@@ -132,6 +133,14 @@ func (v *View) fixPtr() {
 	}
 }
 
+func (v *View) jumpTo(n int) {
+	i := sort.Search(len(v.komes), func(i int) bool{ return v.komes[i].No >= n })
+	if i < len(v.komes) && v.komes[i].No == n {
+		v.ptr = i
+		v.fixPtr()
+	}
+}
+
 func (v *View) execCommand() {
 	defer func(){
 		v.cmd = nil
@@ -161,10 +170,8 @@ func (v *View) execCommand() {
 
 	// :23 -> jump to 23kome
 	n, err := strconv.ParseInt(cmd[1:], 10, 32)
-	if err == nil && 1 <= n && n <= int64(len(v.komes)) {
-		v.ptr = int(n - 1)
-		v.fixPtr()
-		return
+	if err == nil {
+		v.jumpTo(int(n))
 	}
 }
 
@@ -235,6 +242,26 @@ func (v *View) UpdateView() {
 			x++
 
 			{
+				//time
+				fg := termbox.ColorYellow
+				if i == v.ptr {
+					fg = termbox.ColorDefault
+				}
+
+				st := time.Unix(v.live.Status.Stream.StartTime, 0)
+				tm := time.Unix(v.komes[i].Date, 0)
+				dif := tm.Sub(st)
+				line := fmt.Sprintf("%02d:%02d", int(dif.Minutes()), int(dif.Seconds()) % 60)
+				for _, c := range line {
+					termbox.SetCell(x, y, c, fg, bg)
+					x++
+				}
+			}
+
+			termbox.SetCell(x, y, ' ', termbox.ColorDefault, bg)
+			x++
+
+			{
 				// userID
 				fg := termbox.ColorGreen
 				userID := v.komes[i].UserID
@@ -287,7 +314,11 @@ func (v *View) UpdateView() {
 		if len(v.komes) > 0 {
 			par = v.calcEnd() * 100 / len(v.komes)
 		}
-		right := fmt.Sprintf("%d%%", par)
+
+		end := time.Unix(v.live.Status.Stream.EndTime, 0)
+		dif := end.Sub(time.Now())
+
+		right := fmt.Sprintf("%02d:%02d | %d%%", int(dif.Minutes()), int(dif.Seconds()) % 60, par)
 
 		y := v.height - 2
 		x := 0
@@ -318,11 +349,9 @@ func (v *View) UpdateView() {
 		y := v.height - 1
 		x := 0
 
-		cmd := v.cmd
+		cmd := string(v.cmd)
 		if len(cmd) > 0 && cmd[0] == 'i' {
-			c := []rune("send: ")
-			c = append(c, cmd[1:]...)
-			cmd = c
+			cmd = "send: " + cmd[1:]
 		}
 		for _, c := range cmd {
 			termbox.SetCell(x, y, c, termbox.ColorGreen, termbox.ColorDefault)

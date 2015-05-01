@@ -63,7 +63,6 @@ func main(){
 	}
 	defer termbox.Close()
 
-
 	evCh := make(chan termbox.Event)
 	go func(){
 		for {
@@ -72,10 +71,12 @@ func main(){
 	}()
 
 	view := NewView(lv)
+	tick := time.Tick(time.Second / 2)
 
 	loop:
 	for {
 		select {
+		case <-tick:
 		case ev := <-evCh:
 			if ev.Type == termbox.EventKey && ev.Key == termbox.KeyCtrlC {
 				break loop
