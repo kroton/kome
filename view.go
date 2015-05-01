@@ -4,7 +4,11 @@ import (
 	"github.com/mattn/go-runewidth"
 	"fmt"
 	"strings"
+	"time"
+	"strconv"
 )
+
+const chainThreshold = 500 * 1000 * 1000
 
 type View struct {
 	Quit   bool
@@ -15,6 +19,8 @@ type View struct {
 	live   *NicoLive
 	komes  []Kome
 	cmd    []rune
+	prev   int64
+	chain  []rune
 }
 
 func NewView(live *NicoLive) *View {
@@ -34,13 +40,30 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 		v.width, v.height = ev.Width, ev.Height
 		v.fixPtr()
 	case termbox.EventKey:
+		now := time.Now().UnixNano()
+		switch {
+		case ev.Ch == 0:
+			v.chain = nil
+			v.prev = 0
+		case now - v.prev > chainThreshold:
+			v.chain = []rune{ ev.Ch }
+			v.prev = now
+		default:
+			v.chain = append(v.chain, ev.Ch)
+			v.prev = now
+		}
+
 		if len(v.cmd) != 0 {
 			// cmd now
 			switch ev.Key {
+			case termbox.KeyEsc:
+				v.cmd = nil
 			case termbox.KeyEnter:
 				v.execCommand()
 			case termbox.KeyBackspace, termbox.KeyBackspace2:
-				v.cmd = v.cmd[0:len(v.cmd)-1]
+				if len(v.cmd) > 1 || v.cmd[0] != 'i' {
+					v.cmd = v.cmd[0:len(v.cmd)-1]
+				}
 			case termbox.KeySpace:
 				v.cmd = append(v.cmd, ' ')
 			default:
@@ -52,7 +75,7 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 		}
 
 		switch ev.Ch {
-		case 'i', ':', '/':
+		case 'i', ':':
 			v.cmd = append(v.cmd, ev.Ch)
 		case 'j':
 			v.ptr++
@@ -62,7 +85,21 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 			v.fixPtr()
 		case 'G':
 			v.ptr = len(v.komes) - 1
+
+			c := string(v.chain)
+			if len(c) > 1 && c[len(c) - 1] == 'G' {
+				n, err := strconv.ParseInt(c[0:len(c)-1], 10, 32)
+				if err == nil && 1 <= n && n <= int64(len(v.komes)) {
+					v.ptr = int(n - 1)
+				}
+			}
+
 			v.fixPtr()
+		case 'g':
+			if string(v.chain) == "gg" {
+				v.ptr = 0
+				v.fixPtr()
+			}
 		}
 	}
 }
@@ -101,19 +138,32 @@ func (v *View) execCommand() {
 	}()
 
 	cmd := string(v.cmd)
+
+	// quit
 	if cmd == ":q" {
 		v.Quit = true
 		return
 	}
 
-	if strings.HasPrefix(cmd, "i184 ") {
+	// send 184 kome
+	if strings.HasPrefix(cmd, ":184 ") {
 		comment := cmd[5:]
 		v.live.SendKome(comment, true)
 		return
 	}
-	if strings.HasPrefix(cmd, "i ") {
-		comment := cmd[2:]
+
+	// send raw kome
+	if strings.HasPrefix(cmd, "i") {
+		comment := cmd[1:]
 		v.live.SendKome(comment, false)
+		return
+	}
+
+	// :23 -> jump to 23kome
+	n, err := strconv.ParseInt(cmd[1:], 10, 32)
+	if err == nil && 1 <= n && n <= int64(len(v.komes)) {
+		v.ptr = int(n - 1)
+		v.fixPtr()
 		return
 	}
 }
@@ -267,7 +317,14 @@ func (v *View) UpdateView() {
 	if v.height > 0 {
 		y := v.height - 1
 		x := 0
-		for _, c := range v.cmd {
+
+		cmd := v.cmd
+		if len(cmd) > 0 && cmd[0] == 'i' {
+			c := []rune("send: ")
+			c = append(c, cmd[1:]...)
+			cmd = c
+		}
+		for _, c := range cmd {
 			termbox.SetCell(x, y, c, termbox.ColorGreen, termbox.ColorDefault)
 			x += width(c)
 		}
