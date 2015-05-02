@@ -13,7 +13,7 @@ import (
 const chainThreshold = 500 * 1000 * 1000
 
 type View struct {
-	Quit   bool
+	quit   bool
 	width  int
 	height int
 	top    int
@@ -36,7 +36,38 @@ func NewView(live *Live) *View {
 	}
 }
 
-func (v *View) UpdateEvent(ev termbox.Event) {
+func (v *View) Loop() {
+	evCh := make(chan termbox.Event)
+	go func() {
+		for {
+			evCh <- termbox.PollEvent()
+		}
+	}()
+
+	// first draw
+	v.updateView()
+
+	tick := time.Tick(time.Second / 2)
+	for {
+		select {
+		case <-tick:
+		case ev := <-evCh:
+			if ev.Type == termbox.EventKey && ev.Key == termbox.KeyCtrlC {
+				return
+			}
+			v.updateEvent(ev)
+		case kome := <-v.live.KomeCh:
+			v.updateKome(kome)
+		}
+
+		if v.quit {
+			break
+		}
+		v.updateView()
+	}
+}
+
+func (v *View) updateEvent(ev termbox.Event) {
 	switch ev.Type {
 	case termbox.EventResize:
 		v.width, v.height = ev.Width, ev.Height
@@ -107,7 +138,12 @@ func (v *View) UpdateEvent(ev termbox.Event) {
 }
 
 func (v *View) calcEnd() int {
-	end := v.top + (v.height - 2)
+	h := v.height - 2
+	if h < 1 {
+		h = 1
+	}
+
+	end := v.top + h
 	if end > len(v.komes) {
 		end = len(v.komes)
 	}
@@ -115,6 +151,12 @@ func (v *View) calcEnd() int {
 }
 
 func (v *View) fixPtr() {
+	if len(v.komes) == 0 {
+		v.top = 0
+		v.ptr = 0
+		return
+	}
+
 	if v.ptr < 0 {
 		v.ptr = 0
 	}
@@ -151,7 +193,7 @@ func (v *View) execCommand() {
 
 	// quit
 	if cmd == ":q" {
-		v.Quit = true
+		v.quit = true
 		return
 	}
 
@@ -176,10 +218,21 @@ func (v *View) execCommand() {
 	}
 }
 
-func (v *View) UpdateKome(kome Chat) {
+func (v *View) updateKome(kome Chat) {
+	if len(v.komes) == 0 {
+		v.top = 0
+		v.ptr = 0
+		v.komes = append(v.komes, kome)
+		return
+	}
+
 	end := v.calcEnd()
 	if end == len(v.komes) {
-		if end-v.top+1 > v.height-2 {
+		h := v.height - 2
+		if h < 1 {
+			h = 1
+		}
+		if end-v.top+1 > h {
 			v.top++
 			if v.ptr < v.top {
 				v.ptr = v.top
@@ -188,13 +241,9 @@ func (v *View) UpdateKome(kome Chat) {
 	}
 
 	v.komes = append(v.komes, kome)
-	if len(v.komes) == 1 {
-		v.top = 0
-		v.ptr = 0
-	}
 }
 
-func (v *View) UpdateView() {
+func (v *View) updateView() {
 	termbox.HideCursor()
 	nowCmd := len(v.cmd) != 0
 

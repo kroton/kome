@@ -84,7 +84,7 @@ type ChatResult struct {
 }
 
 type Live struct {
-	context *Context
+	ctx *Context
 
 	LiveID string
 	Status PlayerStatus
@@ -94,29 +94,31 @@ type Live struct {
 	acc      []byte
 	thread   Thread
 	openTime int64
-	KomeCh   chan Chat
-	sig      chan struct{}
-	quit     chan struct{}
+
+	KomeCh chan Chat
+	sig    chan struct{}
+	quit   chan struct{}
 
 	mu     sync.Mutex
 	lastNo int
 }
 
-func NewLive(context *Context, liveID string) *Live {
+func NewLive(ctx *Context, liveID string) *Live {
 	return &Live{
-		context: context,
-		LiveID:  liveID,
-		buf:     make([]byte, 2048),
-		acc:     make([]byte, 0, 2048),
-		KomeCh:  make(chan Chat, 1024),
-		sig:     make(chan struct{}, 1),
-		quit:    make(chan struct{}, 1),
+		ctx:    ctx,
+		LiveID: liveID,
+		buf:    make([]byte, 2048),
+		acc:    make([]byte, 0, 2048),
+		KomeCh: make(chan Chat, 1024),
+		sig:    make(chan struct{}, 1),
+		quit:   make(chan struct{}, 1),
 	}
 }
 
 func (lv *Live) GetPlayerStatus() error {
 	u := fmt.Sprintf("http://watch.live.nicovideo.jp/api/getplayerstatus?v=%s", lv.LiveID)
-	res, err := lv.context.Client.Get(u)
+	client := lv.ctx.NewClient()
+	res, err := client.Get(u)
 	if err != nil {
 		return err
 	}
@@ -214,12 +216,6 @@ func (lv *Live) process() {
 	}()
 
 	for {
-		n, err := lv.socket.Read(lv.buf)
-		if err != nil {
-			return
-		}
-
-		lv.acc = append(lv.acc, lv.buf[0:n]...)
 		for {
 			if bytes.HasPrefix(lv.acc, tagChatBegin) {
 				p := bytes.Index(lv.acc, tagChatEnd)
@@ -240,7 +236,7 @@ func (lv *Live) process() {
 				if kome.IsRawUser {
 					id, err := strconv.ParseInt(kome.UserID, 10, 64)
 					if err == nil {
-						kome.User, err = lv.context.GetUser(id)
+						kome.User, err = lv.ctx.GetUser(id)
 					}
 					if err != nil {
 						kome.User.ID = id
@@ -285,6 +281,13 @@ func (lv *Live) process() {
 
 			break
 		}
+
+		n, err := lv.socket.Read(lv.buf)
+		if err != nil {
+			return
+		}
+
+		lv.acc = append(lv.acc, lv.buf[0:n]...)
 	}
 }
 
@@ -300,7 +303,8 @@ func (lv *Live) getPostKey() (string, error) {
 	lv.mu.Unlock()
 
 	u := fmt.Sprintf("http://live.nicovideo.jp/api/getpostkey?thread=%d&block_no=%d", lv.Status.Ms.Thread, blockNum)
-	res, err := lv.context.Client.Get(u)
+	client := lv.ctx.NewClient()
+	res, err := client.Get(u)
 	if err != nil {
 		return "", err
 	}
