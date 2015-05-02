@@ -27,9 +27,7 @@ func main() {
 	}
 
 	u, _ := user.Current()
-	ctxPath := u.HomeDir + "/.config/kome/context.json"
-
-	ctx, err := LoadContext(ctxPath)
+	ctx, err := LoadContext(u.HomeDir + "/.config/kome")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
 		return
@@ -39,19 +37,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "kome: failed to login\n")
 			return
 		}
-		if err := ctx.SaveTo(ctxPath); err != nil {
+		if err := ctx.SaveConfig(); err != nil {
 			fmt.Fprintf(os.Stderr, "kome: %v\n", err)
 			return
 		}
 	}
 
-	repo, err := NewUserRepo(u.HomeDir + "/.config/kome/user.sqlite")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
-		return
-	}
-
-	lv := NewNicoLive(ctx.NewClient(), repo, liveID)
+	lv := NewLive(ctx, liveID)
 	if err := lv.GetPlayerStatus(); err != nil {
 		fmt.Fprintf(os.Stderr, "kome: %v\n", err)
 		return

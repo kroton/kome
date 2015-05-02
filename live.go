@@ -8,7 +8,6 @@ import (
 	"html"
 	"io/ioutil"
 	"net"
-	"net/http"
 	"regexp"
 	"strconv"
 	"sync"
@@ -24,6 +23,11 @@ var (
 	tagChatResEnd   = append([]byte("/>"), 0)
 	rawUserIDReg    = regexp.MustCompile(`^\d+$`)
 )
+
+type User struct {
+	ID   int64  `xml:"id"`
+	Name string `xml:"nickname"`
+}
 
 type PlayerStatus struct {
 	Status string `xml:"status,attr"`
@@ -51,14 +55,14 @@ type PlayerStatus struct {
 	} `xml:"ms"`
 }
 
-type KomeThread struct {
+type Thread struct {
 	ResultCode int    `xml:"resultcode,attr"`
 	LastRes    int    `xml:"last_res,attr"`
 	Ticket     string `xml:"ticket,attr"`
 	ServerTime int64  `xml:"server_time,attr"`
 }
 
-type Kome struct {
+type Chat struct {
 	XMLName   xml.Name `xml:"chat"`
 	Thread    int64    `xml:"thread,attr"`
 	No        int      `xml:"no,attr"`
@@ -74,14 +78,13 @@ type Kome struct {
 	User      User     `xml:"-"`
 }
 
-type KomeResult struct {
+type ChatResult struct {
 	Status int `xml:"status"`
 	No     int `xml:"no"`
 }
 
-type NicoLive struct {
-	client http.Client
-	repo   *UserRepo
+type Live struct {
+	context *Context
 
 	LiveID string
 	Status PlayerStatus
@@ -89,9 +92,9 @@ type NicoLive struct {
 	socket   *net.TCPConn
 	buf      []byte
 	acc      []byte
-	thread   KomeThread
+	thread   Thread
 	openTime int64
-	KomeCh   chan Kome
+	KomeCh   chan Chat
 	sig      chan struct{}
 	quit     chan struct{}
 
@@ -99,22 +102,21 @@ type NicoLive struct {
 	lastNo int
 }
 
-func NewNicoLive(client http.Client, repo *UserRepo, liveID string) *NicoLive {
-	return &NicoLive{
-		client: client,
-		repo:   repo,
-		LiveID: liveID,
-		buf:    make([]byte, 2048),
-		acc:    make([]byte, 0, 2048),
-		KomeCh: make(chan Kome, 1024),
-		sig:    make(chan struct{}, 1),
-		quit:   make(chan struct{}, 1),
+func NewLive(context *Context, liveID string) *Live {
+	return &Live{
+		context: context,
+		LiveID:  liveID,
+		buf:     make([]byte, 2048),
+		acc:     make([]byte, 0, 2048),
+		KomeCh:  make(chan Chat, 1024),
+		sig:     make(chan struct{}, 1),
+		quit:    make(chan struct{}, 1),
 	}
 }
 
-func (lv *NicoLive) GetPlayerStatus() error {
+func (lv *Live) GetPlayerStatus() error {
 	u := fmt.Sprintf("http://watch.live.nicovideo.jp/api/getplayerstatus?v=%s", lv.LiveID)
-	res, err := lv.client.Get(u)
+	res, err := lv.context.Client.Get(u)
 	if err != nil {
 		return err
 	}
@@ -130,7 +132,7 @@ func (lv *NicoLive) GetPlayerStatus() error {
 	return nil
 }
 
-func (lv *NicoLive) write(b []byte) error {
+func (lv *Live) write(b []byte) error {
 	b = append(b, 0)
 	for len(b) > 0 {
 		n, err := lv.socket.Write(b)
@@ -142,7 +144,7 @@ func (lv *NicoLive) write(b []byte) error {
 	return nil
 }
 
-func (lv *NicoLive) Connect(timeout time.Duration) error {
+func (lv *Live) Connect(timeout time.Duration) error {
 	addr := fmt.Sprintf("%s:%d", lv.Status.Ms.Addr, lv.Status.Ms.Port)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
@@ -206,7 +208,7 @@ func (lv *NicoLive) Connect(timeout time.Duration) error {
 	return nil
 }
 
-func (lv *NicoLive) process() {
+func (lv *Live) process() {
 	defer func() {
 		lv.quit <- struct{}{}
 	}()
@@ -229,7 +231,7 @@ func (lv *NicoLive) process() {
 				cut := lv.acc[0:end]
 				lv.acc = lv.acc[end:]
 
-				var kome Kome
+				var kome Chat
 				if err := xml.Unmarshal(cut, &kome); err != nil {
 					continue
 				}
@@ -238,7 +240,7 @@ func (lv *NicoLive) process() {
 				if kome.IsRawUser {
 					id, err := strconv.ParseInt(kome.UserID, 10, 64)
 					if err == nil {
-						kome.User, err = lv.getUser(id)
+						kome.User, err = lv.context.GetUser(id)
 					}
 					if err != nil {
 						kome.User.ID = id
@@ -269,7 +271,7 @@ func (lv *NicoLive) process() {
 				cut := lv.acc[0:end]
 				lv.acc = lv.acc[end:]
 
-				var res KomeResult
+				var res ChatResult
 				if err := xml.Unmarshal(cut, &res); err != nil {
 					continue
 				}
@@ -286,19 +288,19 @@ func (lv *NicoLive) process() {
 	}
 }
 
-func (lv *NicoLive) Close() {
+func (lv *Live) Close() {
 	lv.socket.Close()
 	lv.sig <- struct{}{}
 	<-lv.quit
 }
 
-func (lv *NicoLive) getPostKey() (string, error) {
+func (lv *Live) getPostKey() (string, error) {
 	lv.mu.Lock()
 	blockNum := lv.lastNo / 10
 	lv.mu.Unlock()
 
 	u := fmt.Sprintf("http://live.nicovideo.jp/api/getpostkey?thread=%d&block_no=%d", lv.Status.Ms.Thread, blockNum)
-	res, err := lv.client.Get(u)
+	res, err := lv.context.Client.Get(u)
 	if err != nil {
 		return "", err
 	}
@@ -315,11 +317,11 @@ func (lv *NicoLive) getPostKey() (string, error) {
 	return string(b[8:]), nil
 }
 
-func (lv *NicoLive) calcVpos() int64 {
+func (lv *Live) calcVpos() int64 {
 	return 100 * (lv.thread.ServerTime - lv.Status.Stream.StartTime + time.Now().Unix() - lv.openTime)
 }
 
-func (lv *NicoLive) SendKome(comment string, is184 bool) error {
+func (lv *Live) SendKome(comment string, is184 bool) error {
 	postkey, err := lv.getPostKey()
 	if err != nil {
 		return err
@@ -331,7 +333,7 @@ func (lv *NicoLive) SendKome(comment string, is184 bool) error {
 		mail = "184"
 	}
 
-	kome := Kome{
+	kome := Chat{
 		Thread:  lv.Status.Ms.Thread,
 		Ticket:  lv.thread.Ticket,
 		Vpos:    vpos,
@@ -350,31 +352,4 @@ func (lv *NicoLive) SendKome(comment string, is184 bool) error {
 		return err
 	}
 	return nil
-}
-
-func (lv *NicoLive) getUser(id int64) (User, error) {
-	if user, err := lv.repo.Get(id); err == nil {
-		return user, nil
-	}
-
-	u := fmt.Sprintf("http://seiga.nicovideo.jp/api/user/info?id=%d", id)
-	res, err := lv.client.Get(u)
-	if err != nil {
-		return User{}, err
-	}
-	defer res.Body.Close()
-
-	var resXML struct {
-		XMLName xml.Name `xml:"response"`
-		User    User     `xml:"user"`
-	}
-	if err := xml.NewDecoder(res.Body).Decode(&resXML); err != nil {
-		return User{}, err
-	}
-	if resXML.User.ID != id || resXML.User.Name == "-" {
-		return User{}, errors.New("failed to getting user info")
-	}
-
-	lv.repo.Save(resXML.User)
-	return resXML.User, nil
 }

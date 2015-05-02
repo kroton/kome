@@ -18,14 +18,14 @@ type View struct {
 	height int
 	top    int
 	ptr    int
-	live   *NicoLive
-	komes  []Kome
+	live   *Live
+	komes  []Chat
 	cmd    []rune
 	prev   int64
 	chain  []rune
 }
 
-func NewView(live *NicoLive) *View {
+func NewView(live *Live) *View {
 	w, h := termbox.Size()
 	return &View{
 		width:  w,
@@ -176,7 +176,7 @@ func (v *View) execCommand() {
 	}
 }
 
-func (v *View) UpdateKome(kome Kome) {
+func (v *View) UpdateKome(kome Chat) {
 	end := v.calcEnd()
 	if end == len(v.komes) {
 		if end-v.top+1 > v.height-2 {
