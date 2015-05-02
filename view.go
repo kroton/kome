@@ -188,6 +188,10 @@ func (v *View) UpdateKome(kome Chat) {
 	}
 
 	v.komes = append(v.komes, kome)
+	if len(v.komes) == 1 {
+		v.top = 0
+		v.ptr = 0
+	}
 }
 
 func (v *View) UpdateView() {
