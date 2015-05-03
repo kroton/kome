@@ -61,11 +61,8 @@ func main() {
 		return
 	}
 
-	// context
-	ctx := &Context{account, repo}
-
 	// live
-	lv := NewLive(ctx, liveID)
+	lv := NewLive(account, repo, liveID)
 	if err := lv.GetPlayerStatus(); err != nil {
 		stdErr(err)
 		return

@@ -84,7 +84,8 @@ type ChatResult struct {
 }
 
 type Live struct {
-	ctx *Context
+	account *Account
+	repo    *UserRepo
 
 	LiveID string
 	Status PlayerStatus
@@ -103,21 +104,22 @@ type Live struct {
 	lastNo int
 }
 
-func NewLive(ctx *Context, liveID string) *Live {
+func NewLive(account *Account, repo *UserRepo, liveID string) *Live {
 	return &Live{
-		ctx:    ctx,
-		LiveID: liveID,
-		buf:    make([]byte, 2048),
-		acc:    make([]byte, 0, 2048),
-		KomeCh: make(chan Chat, 1024),
-		sig:    make(chan struct{}, 1),
-		quit:   make(chan struct{}, 1),
+		account: account,
+		repo:    repo,
+		LiveID:  liveID,
+		buf:     make([]byte, 2048),
+		acc:     make([]byte, 0, 2048),
+		KomeCh:  make(chan Chat, 1024),
+		sig:     make(chan struct{}, 1),
+		quit:    make(chan struct{}, 1),
 	}
 }
 
 func (lv *Live) GetPlayerStatus() error {
 	u := fmt.Sprintf("http://watch.live.nicovideo.jp/api/getplayerstatus?v=%s", lv.LiveID)
-	client := lv.ctx.NewClient()
+	client := lv.account.NewClient()
 	res, err := client.Get(u)
 	if err != nil {
 		return err
@@ -236,7 +238,7 @@ func (lv *Live) process() {
 				if kome.IsRawUser {
 					id, err := strconv.ParseInt(kome.UserID, 10, 64)
 					if err == nil {
-						kome.User, err = lv.ctx.GetUser(id)
+						kome.User, err = lv.repo.Get(id)
 					}
 					if err != nil {
 						kome.User.ID = id
@@ -303,7 +305,7 @@ func (lv *Live) getPostKey() (string, error) {
 	lv.mu.Unlock()
 
 	u := fmt.Sprintf("http://live.nicovideo.jp/api/getpostkey?thread=%d&block_no=%d", lv.Status.Ms.Thread, blockNum)
-	client := lv.ctx.NewClient()
+	client := lv.account.NewClient()
 	res, err := client.Get(u)
 	if err != nil {
 		return "", err

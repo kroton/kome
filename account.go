@@ -105,6 +105,5 @@ func (a *Account) Login() bool {
 			return true
 		}
 	}
-
 	return false
 }
