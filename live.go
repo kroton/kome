@@ -95,10 +95,12 @@ type Live struct {
 
 	KomeCh chan Chat
 	sig    chan struct{}
-	quit   chan struct{}
+	wg     sync.WaitGroup
 
 	mu     sync.Mutex
 	lastNo int
+
+	writeMu sync.Mutex
 }
 
 func NewLive(account *Account, repo *UserRepo, liveID string) *Live {
@@ -109,8 +111,7 @@ func NewLive(account *Account, repo *UserRepo, liveID string) *Live {
 		buf:     make([]byte, 2048),
 		acc:     make([]byte, 0, 2048),
 		KomeCh:  make(chan Chat, 1024),
-		sig:     make(chan struct{}, 1),
-		quit:    make(chan struct{}, 1),
+		sig:     make(chan struct{}),
 	}
 }
 
@@ -134,6 +135,9 @@ func (lv *Live) LoadPlayerStatus() error {
 }
 
 func (lv *Live) write(b []byte) error {
+	lv.writeMu.Lock()
+	defer lv.writeMu.Unlock()
+
 	b = append(b, 0)
 	for len(b) > 0 {
 		n, err := lv.socket.Write(b)
@@ -205,14 +209,14 @@ func (lv *Live) Connect(timeout time.Duration) error {
 		return errors.New("timeout")
 	}
 
+	lv.wg.Add(2)
 	go lv.process()
+	go lv.keepAlive()
 	return nil
 }
 
 func (lv *Live) process() {
-	defer func() {
-		lv.quit <- struct{}{}
-	}()
+	defer lv.wg.Done()
 
 	for {
 		for {
@@ -284,10 +288,26 @@ func (lv *Live) process() {
 	}
 }
 
+func (lv *Live) keepAlive() {
+	defer lv.wg.Done()
+
+	tick := time.Tick(time.Minute)
+	for {
+		select {
+		case <-tick:
+			if err := lv.write(nil); err != nil {
+				return
+			}
+		case <-lv.sig:
+			return
+		}
+	}
+}
+
 func (lv *Live) Close() {
 	lv.socket.Close()
-	lv.sig <- struct{}{}
-	<-lv.quit
+	close(lv.sig)
+	lv.wg.Wait()
 }
 
 func (lv *Live) getPostKey() (string, error) {
