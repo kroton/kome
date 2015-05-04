@@ -117,7 +117,7 @@ func NewLive(account *Account, repo *UserRepo, liveID string) *Live {
 	}
 }
 
-func (lv *Live) GetPlayerStatus() error {
+func (lv *Live) LoadPlayerStatus() error {
 	u := fmt.Sprintf("http://watch.live.nicovideo.jp/api/getplayerstatus?v=%s", lv.LiveID)
 	client := lv.account.NewClient()
 	res, err := client.Get(u)

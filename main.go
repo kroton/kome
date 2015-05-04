@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"github.com/nsf/termbox-go"
 	"os"
@@ -43,9 +42,13 @@ func main() {
 		stdErr(err)
 		return
 	}
-	if !account.HeartBeat() {
-		if !account.Login() || !account.HeartBeat() {
-			stdErr(errors.New("failed to login"))
+	if err := account.HeartBeat(); err != nil {
+		if err := account.Login(); err != nil {
+			stdErr(err)
+			return
+		}
+		if err := account.HeartBeat(); err != nil {
+			stdErr(err)
 			return
 		}
 		if err := account.SaveTo(accountPath); err != nil {
@@ -63,7 +66,7 @@ func main() {
 
 	// live
 	lv := NewLive(account, repo, liveID)
-	if err := lv.GetPlayerStatus(); err != nil {
+	if err := lv.LoadPlayerStatus(); err != nil {
 		stdErr(err)
 		return
 	}

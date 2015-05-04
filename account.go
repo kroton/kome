@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -66,11 +67,11 @@ func (a *Account) NewClient() http.Client {
 	return client
 }
 
-func (a *Account) HeartBeat() bool {
+func (a *Account) HeartBeat() error {
 	client := a.NewClient()
 	res, err := client.Get("http://live.nicovideo.jp/api/heartbeat")
 	if err != nil {
-		return false
+		return err
 	}
 	defer res.Body.Close()
 
@@ -80,13 +81,16 @@ func (a *Account) HeartBeat() bool {
 		} `xml:"error"`
 	}
 	if err := xml.NewDecoder(res.Body).Decode(&h); err != nil {
-		return false
+		return err
+	}
+	if h.Err.Code == "NOTLOGIN" {
+		return errors.New("not login")
 	}
 
-	return h.Err.Code != "NOTLOGIN"
+	return nil
 }
 
-func (a *Account) Login() bool {
+func (a *Account) Login() error {
 	client := clientWithCookie()
 	_, err := client.PostForm(
 		"https://secure.nicovideo.jp/secure/login?site=nicolive",
@@ -96,14 +100,14 @@ func (a *Account) Login() bool {
 		},
 	)
 	if err != nil {
-		return false
+		return err
 	}
 
 	for _, cookie := range client.Jar.Cookies(nicoGlobalURL) {
 		if cookie.Name == nicoCookieName && nicoCookieValueReg.MatchString(cookie.Value) {
 			a.Session = cookie.Value
-			return true
+			return nil
 		}
 	}
-	return false
+	return errors.New("failed to login")
 }
