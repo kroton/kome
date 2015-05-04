@@ -231,6 +231,9 @@ func (lv *Live) process() {
 					continue
 				}
 
+				// unescape comment
+				kome.Comment = html.UnescapeString(kome.Comment)
+
 				// load User data
 				kome.User = lv.repo.Get(kome.UserID)
 

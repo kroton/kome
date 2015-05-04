@@ -327,7 +327,7 @@ func (v *View) updateView() {
 				l := 0
 				for _, c := range userName {
 					termbox.SetCell(x, y, c, fg, bg)
-					w := runewidth.RuneWidth(c)
+					w := width(c)
 					x += w
 					l += w
 				}
