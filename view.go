@@ -260,9 +260,6 @@ func (v *View) updateView() {
 			maxLen := 0
 			for _, kome := range v.komes[v.top:end] {
 				l := stringWidth(kome.User.Name)
-				if !kome.IsRawUser {
-					l = 3
-				}
 				if l > maxLen {
 					maxLen = l
 				}
@@ -320,9 +317,8 @@ func (v *View) updateView() {
 				fg := termbox.ColorGreen
 				userName := v.komes[i].User.Name
 
-				if !v.komes[i].IsRawUser {
+				if !v.komes[i].User.IsRawUser {
 					fg = termbox.ColorYellow
-					userName = "184"
 				}
 				if i == v.ptr {
 					fg = termbox.ColorDefault

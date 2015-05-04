@@ -25,8 +25,9 @@ var (
 )
 
 type User struct {
-	ID   int64  `xml:"id"`
-	Name string `xml:"nickname"`
+	ID        int64  `xml:"id"`
+	Name      string `xml:"nickname"`
+	IsRawUser bool   `xml:"-"`
 }
 
 type PlayerStatus struct {
@@ -63,19 +64,18 @@ type Thread struct {
 }
 
 type Chat struct {
-	XMLName   xml.Name `xml:"chat"`
-	Thread    int64    `xml:"thread,attr"`
-	No        int      `xml:"no,attr"`
-	Vpos      int64    `xml:"vpos,attr"`
-	Date      int64    `xml:"date,attr"`
-	UserID    string   `xml:"user_id,attr"`
-	Premium   int      `xml:"premium,attr"`
-	Mail      string   `xml:"mail,attr"`
-	Ticket    string   `xml:"ticket,attr"`
-	PostKey   string   `xml:"postkey,attr"`
-	Comment   string   `xml:",innerxml"`
-	IsRawUser bool     `xml:"-"`
-	User      User     `xml:"-"`
+	XMLName xml.Name `xml:"chat"`
+	Thread  int64    `xml:"thread,attr"`
+	No      int      `xml:"no,attr"`
+	Vpos    int64    `xml:"vpos,attr"`
+	Date    int64    `xml:"date,attr"`
+	UserID  string   `xml:"user_id,attr"`
+	Premium int      `xml:"premium,attr"`
+	Mail    string   `xml:"mail,attr"`
+	Ticket  string   `xml:"ticket,attr"`
+	PostKey string   `xml:"postkey,attr"`
+	Comment string   `xml:",innerxml"`
+	User    User     `xml:"-"`
 }
 
 type ChatResult struct {
@@ -234,16 +234,21 @@ func (lv *Live) process() {
 					continue
 				}
 
-				kome.IsRawUser = rawUserIDReg.MatchString(kome.UserID)
-				if kome.IsRawUser {
+				isRawUser := rawUserIDReg.MatchString(kome.UserID)
+				if isRawUser {
 					id, err := strconv.ParseInt(kome.UserID, 10, 64)
 					if err == nil {
 						kome.User, err = lv.repo.Get(id)
 					}
 					if err != nil {
-						kome.User.ID = id
+						kome.User.ID = 0
 						kome.User.Name = kome.UserID
 					}
+					kome.User.IsRawUser = true
+				} else {
+					kome.User.IsRawUser = false
+					kome.User.ID = 0
+					kome.User.Name = "184"
 				}
 
 				lv.mu.Lock()
