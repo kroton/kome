@@ -11,7 +11,7 @@ kome is Terminal Niconama Comment Viewer
 
     $ go get github.com/kroton/kome
     
-## Setting
+## Configuration
 ~/.config/kome/account.json
 ```json
 {
