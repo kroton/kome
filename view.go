@@ -369,8 +369,8 @@ func (v *View) updateView() {
 			par = v.calcEnd() * 100 / len(v.komes)
 		}
 
-		end := time.Unix(v.live.Status.Stream.EndTime, 0)
-		dif := end.Sub(time.Now())
+		start := time.Unix(v.live.Status.Stream.StartTime, 0)
+		dif := time.Now().Sub(start)
 
 		right := fmt.Sprintf("%02d:%02d | %d%%", int(dif.Minutes()), int(dif.Seconds())%60, par)
 
