@@ -99,7 +99,7 @@ func (r *UserRepo) getByRawID(id int64) (User, error) {
 }
 
 func getUserFromAPI(id int64) (User, error) {
-	u := fmt.Sprintf("http://seiga.nicovideo.jp/api/user/info?id=%d", id)
+	u := fmt.Sprintf("http://api.ce.nicovideo.jp/api/v1/user.info?user_id=%d", id)
 	res, err := http.Get(u)
 	if err != nil {
 		return User{}, err
@@ -107,13 +107,14 @@ func getUserFromAPI(id int64) (User, error) {
 	defer res.Body.Close()
 
 	var resXML struct {
-		XMLName xml.Name `xml:"response"`
+		XMLName xml.Name `xml:"nicovideo_user_response"`
+		Status  string   `xml:"status,attr"`
 		User    User     `xml:"user"`
 	}
 	if err := xml.NewDecoder(res.Body).Decode(&resXML); err != nil {
 		return User{}, err
 	}
-	if resXML.User.ID != id || resXML.User.Name == "-" {
+	if resXML.Status != "ok" {
 		return User{}, errors.New("user not found")
 	}
 	return resXML.User, nil
