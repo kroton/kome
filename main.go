@@ -57,14 +57,15 @@ func main() {
 		}
 	}
 
-	// load user repo
-	repo, err := LoadUserRepo(dbPath)
+	// open and migrate user database
+	// create user repo
+	db, err := OpenWithMigrate(dbPath)
 	if err != nil {
 		stdErr(err)
-		return
 	}
+	repo := NewUserRepo(db)
 
-	// live
+	// load and connect live
 	lv := NewLive(account, repo, liveID)
 	if err := lv.LoadPlayerStatus(); err != nil {
 		stdErr(err)
@@ -76,14 +77,14 @@ func main() {
 	}
 	defer lv.Close()
 
-	// termbox
+	// init termbox
 	if err := termbox.Init(); err != nil {
 		stdErr(err)
 		return
 	}
 	defer termbox.Close()
 
-	// view
+	// create view and start kome!
 	view := NewView(lv)
 	view.Loop()
 }

@@ -11,12 +11,7 @@ import (
 
 const createUserTable = `create table if not exists user(id integer primary key, name varchar(255))`
 
-type UserRepo struct {
-	db *sql.DB
-	mp map[int64]User
-}
-
-func LoadUserRepo(path string) (*UserRepo, error) {
+func OpenWithMigrate(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open user database %v", path)
@@ -24,7 +19,19 @@ func LoadUserRepo(path string) (*UserRepo, error) {
 	if _, err := db.Exec(createUserTable); err != nil {
 		return nil, err
 	}
-	return &UserRepo{db: db, mp: make(map[int64]User)}, nil
+	return db, nil
+}
+
+type UserRepo struct {
+	db *sql.DB
+	mp map[int64]User
+}
+
+func NewUserRepo(db *sql.DB) *UserRepo {
+	return &UserRepo{
+		db: db,
+		mp: make(map[int64]User),
+	}
 }
 
 func (r *UserRepo) write(user User) error {
