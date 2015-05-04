@@ -8,8 +8,6 @@ import (
 	"html"
 	"io/ioutil"
 	"net"
-	"regexp"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -21,7 +19,6 @@ var (
 	tagChatEnd      = append([]byte("</chat>"), 0)
 	tagChatResBegin = []byte("<chat_result ")
 	tagChatResEnd   = append([]byte("/>"), 0)
-	rawUserIDReg    = regexp.MustCompile(`^\d+$`)
 )
 
 type User struct {
@@ -234,22 +231,8 @@ func (lv *Live) process() {
 					continue
 				}
 
-				isRawUser := rawUserIDReg.MatchString(kome.UserID)
-				if isRawUser {
-					id, err := strconv.ParseInt(kome.UserID, 10, 64)
-					if err == nil {
-						kome.User, err = lv.repo.Get(id)
-					}
-					if err != nil {
-						kome.User.ID = 0
-						kome.User.Name = kome.UserID
-					}
-					kome.User.IsRawUser = true
-				} else {
-					kome.User.IsRawUser = false
-					kome.User.ID = 0
-					kome.User.Name = "184"
-				}
+				// load User data
+				kome.User = lv.repo.Get(kome.UserID)
 
 				lv.mu.Lock()
 				lv.lastNo = kome.No
