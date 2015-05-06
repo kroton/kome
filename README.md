@@ -29,7 +29,8 @@ kome is Terminal Niconama Comment Viewer
 | Key | Description |
 |:---:|:---:|
 | : | move to command mode |
-| :q | exit |
+| :q, q | exit |
+|Ctrl+C| force exit |
 | i | move to comment send mode |
 | :184 hoge | send "hoge" as anonymity comment |
 | j | move to comment below |
@@ -38,4 +39,4 @@ kome is Terminal Niconama Comment Viewer
 | :22 | move to 22nd comment |
 | gg | move to first comment |
 | G | move to last comment |
-|ESC|back to main view|
+|ESC, Ctrl+[|back to main view|
