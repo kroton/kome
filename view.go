@@ -108,6 +108,8 @@ func (v *View) updateEvent(ev termbox.Event) {
 		}
 
 		switch ev.Ch {
+		case 'q':
+			v.quit = true
 		case 'i', ':':
 			v.cmd = append(v.cmd, ev.Ch)
 		case 'j':
