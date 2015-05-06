@@ -1,12 +1,17 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"github.com/nsf/termbox-go"
+	"io"
+	"io/ioutil"
+	"log"
 	"os"
 	"regexp"
 	"runtime"
 	"time"
+
+	"github.com/nsf/termbox-go"
 )
 
 var (
@@ -22,15 +27,41 @@ func usage() {
 	fmt.Fprintf(os.Stdout, "Usage: kome \x1b[4mURL or lv***\x1b[0m\n")
 }
 
+var App *Application
+
+type Application struct {
+	live *Live
+	view *View
+
+	logger *log.Logger
+}
+
+func NewLogger(logFile string) *log.Logger {
+	var f io.Writer
+	f, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		f = ioutil.Discard
+	}
+
+	return log.New(f, "*** ", log.LstdFlags|log.Llongfile)
+}
+
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	if len(os.Args) != 2 {
+	logFile := flag.String("log", "", "log file path")
+	flag.Parse()
+
+	// app instance
+	App = &Application{}
+	App.logger = NewLogger(*logFile)
+
+	if len(flag.Args()) != 1 {
 		usage()
 		return
 	}
 
-	liveID := regexp.MustCompile(`lv\d+`).FindString(os.Args[1])
+	liveID := regexp.MustCompile(`lv\d+`).FindString(flag.Arg(0))
 	if liveID == "" {
 		usage()
 		return
@@ -75,7 +106,7 @@ func main() {
 		stdErr(err)
 		return
 	}
-	defer lv.Close()
+	App.live = lv
 
 	// init termbox
 	if err := termbox.Init(); err != nil {
@@ -87,4 +118,6 @@ func main() {
 	// create view and start kome!
 	view := NewView(lv)
 	view.Loop()
+
+	App.live.Close()
 }

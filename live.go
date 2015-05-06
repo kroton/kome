@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+var errClosed = errors.New("closed")
+
 var (
 	tagThreadBegin  = []byte("<thread ")
 	tagThreadEnd    = append([]byte("/>"), 0)
@@ -51,6 +53,10 @@ type PlayerStatus struct {
 		Port   int    `xml:"port"`
 		Thread int64  `xml:"thread"`
 	} `xml:"ms"`
+
+	Error struct {
+		Code string `xml:"code"`
+	} `xml:"error"`
 }
 
 type Thread struct {
@@ -127,6 +133,11 @@ func (lv *Live) LoadPlayerStatus() error {
 	if err := xml.NewDecoder(res.Body).Decode(&lv.Status); err != nil {
 		return err
 	}
+
+	if lv.Status.Error.Code == "closed" {
+		return errClosed
+	}
+
 	if lv.Status.Status != "ok" {
 		return errors.New("playerstatus should be ok")
 	}
