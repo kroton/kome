@@ -2,15 +2,19 @@ package main
 
 import (
 	"fmt"
-	"github.com/mattn/go-runewidth"
-	"github.com/nsf/termbox-go"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/mattn/go-runewidth"
+	"github.com/nsf/termbox-go"
 )
 
 const chainThreshold = 500 * 1000 * 1000
+const liveIDCheckIntervalSec = 20
 
 type View struct {
 	quit   bool
@@ -48,6 +52,8 @@ func (v *View) Loop() {
 	v.updateView()
 
 	tick := time.Tick(time.Second / 2)
+	tickUpdate := time.NewTicker(liveIDCheckIntervalSec * time.Second)
+
 	for {
 		select {
 		case <-tick:
@@ -58,6 +64,8 @@ func (v *View) Loop() {
 			v.updateEvent(ev)
 		case kome := <-v.live.KomeCh:
 			v.updateKome(kome)
+		case <-tickUpdate.C:
+			v.checkNewLiveID()
 		}
 
 		if v.quit {
@@ -438,4 +446,64 @@ func width(c rune) int {
 		w = 1
 	}
 	return w
+}
+
+func (v *View) checkNewLiveID() {
+	App.logger.Printf("checking live id: Community ID = %s", v.live.Status.Stream.Community)
+
+	err := v.live.LoadPlayerStatus()
+	if err != errClosed {
+		if err != nil {
+			App.logger.Print(err)
+		}
+		return
+	}
+
+	newLiveID := v.getCurrentLiveID(v.live.Status.Stream.Community)
+	if newLiveID == "" {
+		App.logger.Print("not found")
+		return
+	}
+
+	// close old connection
+	v.live.Close()
+
+	// load and connect live
+	App.logger.Print("reconnecting")
+	lv := NewLive(v.live.account, v.live.repo, newLiveID)
+	if err := lv.LoadPlayerStatus(); err != nil {
+		App.logger.Print(err)
+		return
+	}
+
+	if err := lv.Connect(time.Second * 5); err != nil {
+		App.logger.Print(err)
+		return
+	}
+
+	App.live = lv
+	v.live = lv
+}
+
+func (v *View) getCurrentLiveID(commuID string) string {
+	url := "http://com.nicovideo.jp/community/" + commuID
+	App.logger.Printf("Community URL: %s", url)
+
+	doc, err := goquery.NewDocument(url)
+	if err != nil {
+		App.logger.Print(err)
+		return ""
+	}
+
+	re := regexp.MustCompile(`lv\d+`)
+	var newLiveID string
+
+	doc.Find("#now_live").Each(func(i int, s *goquery.Selection) {
+		newUrl, ok := s.Find("a").Attr("href")
+		if ok {
+			newLiveID = re.FindString(newUrl)
+		}
+	})
+
+	return newLiveID
 }
